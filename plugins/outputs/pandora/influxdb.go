@@ -33,7 +33,7 @@ type PandoraTSDB struct {
 
 var sampleConfig = `
  # Configuration for PandoraTSDB server to send metrics to
-[[outputs.PandoraTSDB]]
+[[outputs.pandora]]
   url = "http://localhost:8086" # required
   ## The target repo for metrics (telegraf will create it if not exists).
   repo = "telegraf" # required
@@ -102,13 +102,12 @@ func (i *PandoraTSDB) Write(metrics []telegraf.Metric) error {
 	if err != nil {
 		return err
 	}
-	log.Println(bufsize, n, string(p))
 	// This will get set to nil if a successful write occurs
 	err = fmt.Errorf("Could not write to any PandoraTSDB server in cluster")
 
 	if e := i.client.PostPointsFromBytes(&tsdb.PostPointsFromBytesInput{
 		RepoName: i.Repo,
-		Buffer:   p,
+		Buffer:   p[:n],
 	}); e != nil {
 		if strings.Contains(e.Error(), "field type conflict") {
 			log.Printf("E! Field type conflict, dropping conflicted points: %s", e)
@@ -132,5 +131,5 @@ func newPandoraTSDB() *PandoraTSDB {
 }
 
 func init() {
-	outputs.Add("PandoraTSDB", func() telegraf.Output { return newPandoraTSDB() })
+	outputs.Add("pandora", func() telegraf.Output { return newPandoraTSDB() })
 }
