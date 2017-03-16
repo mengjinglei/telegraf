@@ -8,6 +8,8 @@ import (
 
 	"github.com/influxdata/telegraf/testutil"
 
+	"reflect"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,4 +72,14 @@ func TestHTTPError_FieldTypeConflict(t *testing.T) {
 	err = i.Write(testutil.MockMetrics())
 	require.NoError(t, err)
 	require.NoError(t, i.Close())
+}
+
+func Test_createSeries(t *testing.T) {
+	points := []byte("cpu,host=h1 value=123\ngpu,region=g1 value=123\ntest,host=h1 value=123\nmem,host=h1 value=123")
+	series := getSeries(points)
+	exp := []string{"cpu", "gpu", "test", "mem"}
+	if !reflect.DeepEqual(series, exp) {
+		t.Error(series, exp)
+	}
+	t.Log(series)
 }

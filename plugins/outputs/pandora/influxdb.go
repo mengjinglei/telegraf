@@ -1,6 +1,7 @@
 package pandora
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net/url"
@@ -114,6 +115,9 @@ func (i *PandoraTSDB) Write(metrics []telegraf.Metric) error {
 			// setting err to nil, otherwise we will keep retrying and points
 			// w/ conflicting types will get stuck in the buffer forever.
 			err = nil
+		} else if strings.Contains(e.Error(), "E7101") && i.AutoCreateSeries {
+			log.Println("I! Seires does not exists, start to create series")
+			err = createSeries(i.Repo, i.RetentionPolicy, p[:n], i.client)
 		}
 		// Log write failure
 		log.Printf("E! PandoraTSDB Output Error: %s", e)
@@ -132,4 +136,38 @@ func newPandoraTSDB() *PandoraTSDB {
 
 func init() {
 	outputs.Add("pandora", func() telegraf.Output { return newPandoraTSDB() })
+}
+
+func createSeries(repo, retention string, points []byte, client tsdb.TsdbAPI) (err error) {
+	series := getSeries(points)
+	for _, s := range series {
+		log.Printf("I! create series:%v, retention:%v for repo:%v", s, retention, repo)
+		err = client.CreateSeries(&tsdb.CreateSeriesInput{
+			RepoName:   repo,
+			SeriesName: s,
+			Retention:  retention,
+		})
+		if err != nil {
+			log.Printf("E! create series fail, %v", err)
+		}
+	}
+
+	return
+}
+
+func getSeries(points []byte) (series []string) {
+
+	series = make([]string, 0)
+	lines := bytes.Split(points, []byte("\n"))
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		ss := bytes.Split(line, []byte(","))
+		if len(ss) > 1 {
+			series = append(series, string(ss[0]))
+		}
+	}
+
+	return
 }
