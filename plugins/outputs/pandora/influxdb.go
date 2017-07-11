@@ -34,7 +34,7 @@ type PandoraTSDB struct {
 
 var sampleConfig = `
  # Configuration for PandoraTSDB server to send metrics to
-[[outputs.pandora]]
+  [[outputs.pandora]]
   url = "http://localhost:8086" # required
   ## The target repo for metrics (telegraf will create it if not exists).
   repo = "telegraf" # required
@@ -51,7 +51,7 @@ var sampleConfig = `
 `
 
 func (i *PandoraTSDB) Connect() error {
-
+	log.Println(i.URL)
 	u, err := url.Parse(i.URL)
 	if err != nil {
 		return fmt.Errorf("error parsing config.URL: %s", err)
@@ -110,6 +110,7 @@ func (i *PandoraTSDB) Write(metrics []telegraf.Metric) error {
 		RepoName: i.Repo,
 		Buffer:   p[:n],
 	}); e != nil {
+		log.Printf("E! PandoraTSDB Output Error: %s", e)
 		if strings.Contains(e.Error(), "field type conflict") {
 			log.Printf("E! Field type conflict, dropping conflicted points: %s", e)
 			// setting err to nil, otherwise we will keep retrying and points
@@ -117,10 +118,9 @@ func (i *PandoraTSDB) Write(metrics []telegraf.Metric) error {
 			err = nil
 		} else if strings.Contains(e.Error(), "E7101") && i.AutoCreateSeries {
 			log.Println("I! Seires does not exists, start to create series")
-			err = createSeries(i.Repo, i.RetentionPolicy, p[:n], i.client)
+			createSeries(i.Repo, i.RetentionPolicy, p[:n], i.client)
 		}
 		// Log write failure
-		log.Printf("E! PandoraTSDB Output Error: %s", e)
 	} else {
 		err = nil
 	}
