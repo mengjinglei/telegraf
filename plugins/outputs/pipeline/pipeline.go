@@ -140,17 +140,28 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 		return err
 	}
 
-	var data string
+	points := make(map[int64]tsdb.Points)
 	for _, pt := range pts {
-		repoName := pt.Name()
+		timestamp := pt.UnixNano()
+		if _, ok := points[timestamp]; !ok {
+			points[timestamp] = make(tsdb.Points, 0)
+		}
+		points[timestamp] = append(points[timestamp], pt)
 
-		data += convertTag(repoName, pt.Tags())
-		data += convertField(repoName, pt.Fields())
-		data += fmt.Sprintf("timestamp=%d\n", pt.UnixNano())
+	}
+
+	var data string
+	for timestamp, pts := range points {
+		for _, pt := range pts {
+			repoName := pt.Name()
+			data += convertTag(repoName, pt.Tags())
+			data += convertField(repoName, pt.Fields())
+		}
+		data += fmt.Sprintf("timestamp=%d\n", timestamp)
 	}
 
 	// This will get set to nil if a successful write occurs
-	//fmt.Println(data)
+	// fmt.Println(data)
 	if e := i.client.PostDataFromBytes(&pipeline.PostDataFromBytesInput{
 		RepoName: i.Repo,
 		Buffer:   []byte(data),
