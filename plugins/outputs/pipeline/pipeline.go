@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	tsdb "github.com/influxdata/influxdb/models"
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/outputs"
-	"qiniu.com/pandora/influx.v3/tsdb"
 
 	"github.com/qiniu/pandora-go-sdk/pipeline"
 
@@ -104,8 +104,8 @@ func (i *Pipeline) Description() string {
 func convertTag(repoName string, tags tsdb.Tags) string {
 	result := ""
 
-	for key, val := range tags {
-		result += fmt.Sprintf("%s_%s=%s\t", repoName, key, val)
+	for _, val := range tags {
+		result += fmt.Sprintf("%s_%s=%s\t", repoName, string(val.Key), string(val.Value))
 	}
 
 	return result
@@ -134,14 +134,16 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 	if err != nil {
 		return err
 	}
-	pts, err := tsdb.ParsePointsString(string(p), "", false)
+	pts, err := tsdb.ParsePoints(p)
 	if err != nil {
 		log.Printf("E! invalid points format", err)
 		return err
 	}
-
+	// fmt.Println(string(p))
+	// fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 	points := make(map[int64]tsdb.Points)
 	for _, pt := range pts {
+		// fmt.Println(pt.String())
 		timestamp := pt.UnixNano()
 		if _, ok := points[timestamp]; !ok {
 			points[timestamp] = make(tsdb.Points, 0)
@@ -153,14 +155,16 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 	var data string
 	for timestamp, pts := range points {
 		for _, pt := range pts {
-			repoName := pt.Name()
+			repoName := string(pt.Name())
 			data += convertTag(repoName, pt.Tags())
-			data += convertField(repoName, pt.Fields())
+			fields, _ := pt.Fields()
+			data += convertField(repoName, fields)
 		}
 		data += fmt.Sprintf("timestamp=%d\n", timestamp)
 	}
 
 	// This will get set to nil if a successful write occurs
+	// fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 	// fmt.Println(data)
 	if e := i.client.PostDataFromBytes(&pipeline.PostDataFromBytesInput{
 		RepoName: i.Repo,
@@ -225,11 +229,12 @@ func extractSchemaFromPoints(points tsdb.Points) (tags []string, fields map[stri
 	fields = make(map[string]string)
 
 	for _, pt := range points {
-		for key := range pt.Tags() {
-			tags = append(tags, pt.Name()+"_"+key)
+		for _, val := range pt.Tags() {
+			tags = append(tags, string(pt.Name())+"_"+string(val.Key))
 		}
-		for key, val := range pt.Fields() {
-			fields[pt.Name()+"_"+key] = getFieldType(val)
+		fs, _ := pt.Fields()
+		for key, val := range fs {
+			fields[string(pt.Name())+"_"+string(key)] = getFieldType(val)
 		}
 	}
 	return
@@ -307,22 +312,24 @@ func (i *Pipeline) updateExport(points tsdb.Points) (err error) {
 	})
 
 	for _, pt := range points {
-		if _, ok := measurements[pt.Name()]; !ok {
-			measurements[pt.Name()] = struct {
+		ptName := string(pt.Name())
+		if _, ok := measurements[ptName]; !ok {
+			measurements[ptName] = struct {
 				tags   map[string]struct{}
 				fields map[string]struct{}
 			}{
 				tags:   make(map[string]struct{}),
 				fields: make(map[string]struct{}),
 			}
-			// measurements[pt.Name()].tags = make(map[string]struct{})
-			// measurements[pt.Name()].fields = make(map[string]struct{})
+			// measurements[ptName].tags = make(map[string]struct{})
+			// measurements[ptName].fields = make(map[string]struct{})
 		}
-		for tag := range pt.Tags() {
-			measurements[pt.Name()].tags[tag] = struct{}{}
+		for _, tag := range pt.Tags() {
+			measurements[ptName].tags[string(tag.Key)] = struct{}{}
 		}
-		for field := range pt.Fields() {
-			measurements[pt.Name()].fields[field] = struct{}{}
+		fields, _ := pt.Fields()
+		for field := range fields {
+			measurements[ptName].fields[field] = struct{}{}
 		}
 
 	}
@@ -391,10 +398,10 @@ func (i *Pipeline) updateSchema(points tsdb.Points) error {
 			Schema:   append(schema.Schema, target...),
 		})
 		if err != nil {
-			fmt.Println("create pipeline repo %s fail %v", i.Repo, err)
+			fmt.Printf("create pipeline repo %s fail %v", i.Repo, err)
 			return err
 		}
-		fmt.Println("create pipeline repo %s success", i.Repo)
+		fmt.Printf("create pipeline repo %s success", i.Repo)
 
 		err = i.tsdbClient.CreateRepo(&tsdbSdk.CreateRepoInput{
 			RepoName: i.Repo,
@@ -403,7 +410,7 @@ func (i *Pipeline) updateSchema(points tsdb.Points) error {
 		if err != nil {
 			err = fmt.Errorf("create tsdb repo %s fail, %v", i.Repo, err.Error())
 		}
-		fmt.Println("create tsdb repo %s success", i.Repo)
+		fmt.Printf("create tsdb repo %s success", i.Repo)
 
 		err = i.updateExport(points)
 		if err != nil {
