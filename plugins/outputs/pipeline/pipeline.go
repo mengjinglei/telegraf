@@ -128,10 +128,12 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 	for _, m := range metrics {
 		bufsize += m.Len()
 	}
+	// fmt.Println(metrics)
 	r := metric.NewReader(metrics)
 	p := make([]byte, bufsize)
-	_, err := r.Read(p)
-	if err != nil {
+	n, err := r.Read(p)
+	if err != nil && n != bufsize {
+		log.Print("E! ", err)
 		return err
 	}
 	pts, err := tsdb.ParsePoints(p)
@@ -139,8 +141,8 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 		log.Printf("E! invalid points format", err)
 		return err
 	}
-	// fmt.Println(string(p))
-	// fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+	// fmt.Println("I! ", string(p))
+	// fmt.Println("I! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 	points := make(map[int64]tsdb.Points)
 	for _, pt := range pts {
 		// fmt.Println(pt.String())
@@ -149,7 +151,9 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 			points[timestamp] = make(tsdb.Points, 0)
 		}
 		points[timestamp] = append(points[timestamp], pt)
-
+		if strings.Contains(string(pt.Name()), "nginx") {
+			log.Println("D! ", time.Now().String(), pt.String())
+		}
 	}
 
 	var data string
@@ -165,7 +169,7 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 
 	// This will get set to nil if a successful write occurs
 	// fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-	// fmt.Println(data)
+	fmt.Println("D! ", time.Now().String(), data)
 	if e := i.client.PostDataFromBytes(&pipeline.PostDataFromBytesInput{
 		RepoName: i.Repo,
 		Buffer:   []byte(data),
