@@ -13,10 +13,10 @@ import (
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/outputs"
 
-	"qiniu.com/pandora/pipeline"
-	"qiniu.com/pandora/tsdb"
+	"github.com/qiniu/pandora-go-sdk/pipeline"
+	"github.com/qiniu/pandora-go-sdk/tsdb"
 
-	sdkbase "qiniu.com/pandora/base"
+	sdkbase "github.com/qiniu/pandora-go-sdk/base"
 )
 
 type PandoraTSDB struct {

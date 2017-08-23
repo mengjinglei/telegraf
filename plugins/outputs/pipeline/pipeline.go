@@ -30,7 +30,23 @@ type Pipeline struct {
 
 	client pipeline.PipelineAPI
 
-	tsdbClient tsdbSdk.TsdbAPI
+	tsdbClient   tsdbSdk.TsdbAPI
+	tsdbKeywords map[string]struct{}
+}
+
+var tsdbKeywords = []string{
+	"TIME", "SERVER", "REPO", "VIEW", "TAGKEY", "ILLEGAL", "EOF", "WS", "IDENT", "BOUNDPARAM",
+	"NUMBER", "INTEGER", "DURATIONVAL", "STRING", "BADSTRING", "BADESCAPE", "TRUE", "FALSE",
+	"REGEX", "BADREGEX", "ADD", "SUB", "MUL", "DIV", "AND", "OR", "EQ", "NEQ", "EQREGEX",
+	"NEQREGEX", "LT", "LTE", "GT", "GTE", "LPAREN", "RPAREN", "COMMA", "COLON", "DOUBLECOLON",
+	"SEMICOLON", "DOT", "ALL", "ALTER", "ANY", "AS", "ASC", "BEGIN", "BY", "CREATE", "CONTINUOUS",
+	"DATABASE", "DATABASES", "DEFAULT", "DELETE", "DESC", "DESTINATIONS", "DIAGNOSTICS", "DISTINCT",
+	"DROP", "DURATION", "END", "EVERY", "EXISTS", "EXPLAIN", "FIELD", "FOR", "FROM", "GROUP",
+	"GROUPS", "IF", "IN", "INF", "INSERT", "INTO", "KEY", "KEYS", "KILL", "LIMIT", "MEASUREMENT",
+	"MEASUREMENTS", "NAME", "NOT", "OFFSET", "ON", "ORDER", "PASSWORD", "POLICY", "POLICIES",
+	"PRIVILEGES", "QUERIES", "QUERY", "READ", "REPLICATION", "RESAMPLE", "RETENTION", "REVOKE",
+	"SELECT", "SERIES", "SET", "SHOW", "SHARD", "SHARDS", "SLIMIT", "SOFFSET", "STATS", "SUBSCRIPTION",
+	"SUBSCRIPTIONS", "TAG", "TO", "VALUES", "WHERE", "WITH", "WRITE",
 }
 
 var sampleConfig = `
@@ -85,6 +101,11 @@ func (i *Pipeline) Connect() error {
 		return err
 	}
 	i.tsdbClient = tsdbClient
+
+	i.tsdbKeywords = make(map[string]struct{})
+	for _, key := range tsdbKeywords {
+		i.tsdbKeywords[strings.ToUpper(key)] = struct{}{}
+	}
 
 	return nil
 }
@@ -169,7 +190,7 @@ func (i *Pipeline) Write(metrics []telegraf.Metric) error {
 
 	// This will get set to nil if a successful write occurs
 	// fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-	fmt.Println("D! ", time.Now().String(), data)
+	// fmt.Println("D! ", time.Now().String(), data)
 	if e := i.client.PostDataFromBytes(&pipeline.PostDataFromBytesInput{
 		RepoName: i.Repo,
 		Buffer:   []byte(data),
@@ -262,12 +283,20 @@ func (i *Pipeline) createOrUpdateExport(seriesName string, tags map[string]struc
 
 	exportTagSpec := make(map[string]string)
 	for tag := range tags {
-		exportTagSpec[tag] = fmt.Sprintf("#%s_%s", seriesName, tag)
+		oldTag := tag
+		if _, ok := i.tsdbKeywords[strings.ToUpper(tag)]; ok {
+			tag = fmt.Sprintf("%s_", tag)
+		}
+		exportTagSpec[tag] = fmt.Sprintf("#%s_%s", seriesName, oldTag)
 	}
 
 	exportFieldSpec := make(map[string]string)
 	for filed := range fields {
-		exportFieldSpec[filed] = fmt.Sprintf("#%s_%s", seriesName, filed)
+		oldFiled := filed
+		if _, ok := i.tsdbKeywords[strings.ToUpper(filed)]; ok {
+			filed = fmt.Sprintf("%s_", filed)
+		}
+		exportFieldSpec[filed] = fmt.Sprintf("#%s_%s", seriesName, oldFiled)
 	}
 
 	err = i.client.CreateExport(&pipeline.CreateExportInput{
